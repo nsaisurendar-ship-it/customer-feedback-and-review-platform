@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Customer Feedback & Review Platform</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;font-family:Segoe UI,Arial,sans-serif}
+  body{background:#f3f5fa;color:#1f2937}
+  header{background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;padding:22px 32px;display:flex;justify-content:space-between;align-items:center}
+  header a{color:#fff;text-decoration:none;border:1px solid #fff;padding:6px 14px;border-radius:6px;font-size:14px}
+  main{max-width:1100px;margin:24px auto;padding:0 16px;display:grid;grid-template-columns:1fr 1.4fr;gap:24px}
+  @media(max-width:800px){main{grid-template-columns:1fr}}
+  .card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.07)}
+  h2{margin-bottom:14px;font-size:18px}
+  .product{padding:12px;border:2px solid #e5e7eb;border-radius:10px;margin-bottom:10px;cursor:pointer}
+  .product:hover,.product.active{border-color:#2563eb;background:#eff6ff}
+  .product small{color:#6b7280}
+  .stars{color:#f59e0b}
+  input,textarea,select{width:100%;padding:10px;margin-bottom:12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px}
+  button{background:#2563eb;color:#fff;border:0;padding:10px 20px;border-radius:8px;cursor:pointer;font-size:15px}
+  button:hover{background:#1d4ed8}
+  .review{border-bottom:1px solid #e5e7eb;padding:12px 0}
+  .badge{font-size:12px;padding:2px 10px;border-radius:12px;color:#fff;margin-left:8px}
+  .Positive{background:#16a34a}.Negative{background:#dc2626}.Neutral{background:#6b7280}
+  .msg{margin-top:10px;font-size:14px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Customer Feedback & Review Platform</h1>
+  <a href="/admin.html">Admin</a>
+</header>
+<main>
+  <div>
+    <div class="card">
+      <h2>Products</h2>
+      <div id="products"></div>
+    </div>
+  </div>
+  <div>
+    <div class="card" style="margin-bottom:24px">
+      <h2>Write a Review <span id="selName" style="color:#2563eb"></span></h2>
+      <div id="authBox">
+        <p style="margin-bottom:10px;color:#6b7280;font-size:14px">Login or register to write a review</p>
+        <input id="aname" placeholder="Name (only for register)">
+        <input id="aemail" type="email" placeholder="Email">
+        <input id="apass" type="password" placeholder="Password (min 6 characters)">
+        <button onclick="doAuth('login')">Login</button>
+        <button onclick="doAuth('register')" style="background:#16a34a">Register</button>
+        <div class="msg" id="authMsg" style="color:#dc2626"></div>
+      </div>
+      <div id="userBox" style="display:none;margin-bottom:12px">
+        Logged in as <b id="uname"></b>
+        <button onclick="logout()" style="background:#6b7280;padding:4px 12px;font-size:13px;margin-left:8px">Logout</button>
+      </div>
+      <select id="rating">
+        <option value="5">5 - Excellent</option><option value="4">4 - Good</option>
+        <option value="3">3 - Average</option><option value="2">2 - Poor</option>
+        <option value="1">1 - Terrible</option>
+      </select>
+      <textarea id="comment" rows="3" placeholder="Share your experience..."></textarea>
+      <button onclick="submitReview()">Submit Review</button>
+      <div class="msg" id="msg"></div>
+    </div>
+    <div class="card">
+      <h2>Reviews</h2>
+      <div id="reviews"><p style="color:#6b7280">Select a product to see reviews.</p></div>
+    </div>
+  </div>
+</main>
+<script>
+let selected = null;
+const stars = n => '★'.repeat(Math.round(n)) + '☆'.repeat(5 - Math.round(n));
+const esc = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function loadProducts() {
+  const data = await (await fetch('/api/products')).json();
+  document.getElementById('products').innerHTML = data.map(p => `
+    <div class="product ${selected === p.id ? 'active' : ''}" onclick="selectProduct(${p.id}, '${esc(p.name)}')">
+      <b>${esc(p.name)}</b><br><small>${esc(p.description || '')}</small><br>
+      <span class="stars">${p.avg_rating ? stars(p.avg_rating) : ''}</span>
+      <small>${p.avg_rating ? p.avg_rating + ' (' + p.review_count + ' reviews)' : 'No reviews yet'}</small>
+    </div>`).join('');
+}
+
+async function selectProduct(id, name) {
+  selected = id;
+  document.getElementById('selName').textContent = '- ' + name;
+  await loadProducts();
+  loadReviews();
+}
+
+async function loadReviews() {
+  const data = await (await fetch(`/api/products/${selected}/reviews`)).json();
+  document.getElementById('reviews').innerHTML = data.length ? data.map(r => `
+    <div class="review">
+      <b>${esc(r.customer)}</b> <span class="stars">${stars(r.rating)}</span>
+      <span class="badge ${r.sentiment}">${r.sentiment}</span>
+      <p>${esc(r.comment)}</p>
+      <small style="color:#9ca3af">${r.created_at}</small>
+    </div>`).join('') : '<p style="color:#6b7280">No reviews yet. Be the first!</p>';
+}
+
+async function submitReview() {
+  const msg = document.getElementById('msg');
+  if (!selected) { msg.textContent = 'Please select a product first.'; return; }
+  const body = {
+    product_id: selected,
+    rating: Number(document.getElementById('rating').value),
+    comment: document.getElementById('comment').value
+  };
+  const res = await fetch('/api/reviews', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN},
+    body: JSON.stringify(body)
+  });
+  const out = await res.json();
+  if (res.ok) {
+    msg.textContent = 'Thank you! AI detected sentiment: ' + out.sentiment;
+    document.getElementById('comment').value = '';
+    loadProducts(); loadReviews();
+  } else msg.textContent = out.error;
+}
+let TOKEN = localStorage.getItem('token') || '';
+let UNAME = localStorage.getItem('uname') || '';
+
+function refreshAuth() {
+  document.getElementById('authBox').style.display = TOKEN ? 'none' : 'block';
+  document.getElementById('userBox').style.display = TOKEN ? 'block' : 'none';
+  document.getElementById('uname').textContent = UNAME;
+}
+
+async function doAuth(kind) {
+  const body = {
+    email: document.getElementById('aemail').value,
+    password: document.getElementById('apass').value
+  };
+  if (kind === 'register') body.name = document.getElementById('aname').value;
+  const res = await fetch('/api/' + kind, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+  });
+  const out = await res.json();
+  const m = document.getElementById('authMsg');
+  if (!res.ok) { m.textContent = out.error; return; }
+  TOKEN = out.token; UNAME = out.name;
+  localStorage.setItem('token', TOKEN); localStorage.setItem('uname', UNAME);
+  m.textContent = '';
+  refreshAuth();
+}
+
+function logout() {
+  TOKEN = ''; UNAME = '';
+  localStorage.removeItem('token'); localStorage.removeItem('uname');
+  refreshAuth();
+}
+
+refreshAuth();
+loadProducts();
+</script>
+</body>
+</html>

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin Dashboard</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;font-family:Segoe UI,Arial,sans-serif}
+  body{background:#f3f5fa;color:#1f2937}
+  header{background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;padding:22px 32px;display:flex;justify-content:space-between;align-items:center}
+  header a{color:#fff;text-decoration:none;border:1px solid #fff;padding:6px 14px;border-radius:6px;font-size:14px}
+  main{max-width:1100px;margin:24px auto;padding:0 16px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px}
+  .card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.07)}
+  .stat b{font-size:28px;display:block;color:#2563eb}
+  .bar{height:14px;border-radius:7px;margin:6px 0}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:10px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+  th{background:#f9fafb}
+  .badge{font-size:12px;padding:2px 10px;border-radius:12px;color:#fff}
+  .Positive{background:#16a34a}.Negative{background:#dc2626}.Neutral{background:#6b7280}
+  button{background:#dc2626;color:#fff;border:0;padding:6px 12px;border-radius:6px;cursor:pointer}
+  input{padding:10px;border:1px solid #d1d5db;border-radius:8px;margin-right:8px}
+  .login{max-width:360px;margin:80px auto;text-align:center}
+  .login button{background:#2563eb;padding:10px 20px}
+  .add{margin-bottom:24px}.add button{background:#16a34a}
+  .charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:24px}
+  .donut{width:170px;height:170px;border-radius:50%;margin:12px auto;position:relative}
+  .donut::after{content:"";position:absolute;inset:38px;background:#fff;border-radius:50%}
+  .legend{text-align:center;font-size:14px}
+  .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin:0 4px 0 12px;vertical-align:middle}
+  .rrow{display:flex;align-items:center;gap:8px;margin:10px 0;font-size:14px}
+  .rtrack{flex:1;background:#f3f4f6;border-radius:8px}
+  .rbar{height:16px;background:#f59e0b;border-radius:8px;min-width:2px}
+</style>
+</head>
+<body>
+<header><h1>Admin Dashboard</h1><a href="/">Back to site</a></header>
+<main>
+  <div id="login" class="card login">
+    <h2 style="margin-bottom:14px">Admin Login</h2>
+    <input id="key" type="password" placeholder="Admin password">
+    <button onclick="login()">Login</button>
+    <p id="err" style="color:#dc2626;margin-top:10px"></p>
+  </div>
+  <div id="dash" style="display:none">
+    <div class="stats" id="stats"></div>
+    <div class="charts" id="charts"></div>
+    <div class="card add">
+      <h3 style="margin-bottom:10px">Add Product</h3>
+      <input id="pname" placeholder="Product name">
+      <input id="pdesc" placeholder="Description">
+      <button onclick="addProduct()">Add</button>
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:10px">All Reviews</h3>
+      <table>
+        <thead><tr><th>Product</th><th>Customer</th><th>Rating</th><th>Comment</th><th>Sentiment</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+<script>
+let KEY = '';
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const H = () => ({'x-admin-key': KEY, 'Content-Type': 'application/json'});
+
+async function login() {
+  KEY = document.getElementById('key').value;
+  const res = await fetch('/api/admin/stats', {headers: H()});
+  if (!res.ok) { document.getElementById('err').textContent = 'Wrong password'; return; }
+  document.getElementById('login').style.display = 'none';
+  document.getElementById('dash').style.display = 'block';
+  load();
+}
+
+async function load() {
+  const st = await (await fetch('/api/admin/stats', {headers: H()})).json();
+  const colors = {Positive:'#16a34a', Negative:'#dc2626', Neutral:'#6b7280'};
+  const bars = st.sentiment.map(s => `
+    <div><small>${s.sentiment}: ${s.c}</small>
+    <div class="bar" style="background:${colors[s.sentiment]};width:${st.total ? s.c / st.total * 100 : 0}%"></div></div>`).join('');
+  document.getElementById('stats').innerHTML = `
+    <div class="card stat"><b>${st.total}</b>Total Reviews</div>
+    <div class="card stat"><b>${st.avg}</b>Average Rating</div>
+    <div class="card"><b style="display:block;margin-bottom:6px">Sentiment (AI)</b>${bars || '<small>No data</small>'}</div>`;
+  const cnt = {Positive: 0, Negative: 0, Neutral: 0};
+  st.sentiment.forEach(s => { if (s.sentiment in cnt) cnt[s.sentiment] = s.c; });
+  const t = st.total || 1;
+  const p1 = cnt.Positive / t * 100, p2 = p1 + cnt.Negative / t * 100;
+  const bg = st.total
+    ? `conic-gradient(#16a34a 0 ${p1}%, #dc2626 ${p1}% ${p2}%, #6b7280 ${p2}% 100%)` : '#e5e7eb';
+  const rc = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+  st.ratings.forEach(r => { rc[r.rating] = r.c; });
+  const mx = Math.max(1, ...Object.values(rc));
+  const rows = [5, 4, 3, 2, 1].map(n => `
+    <div class="rrow"><span style="width:34px">${n} ★</span>
+    <div class="rtrack"><div class="rbar" style="width:${rc[n] / mx * 100}%"></div></div>
+    <span style="width:24px">${rc[n]}</span></div>`).join('');
+  document.getElementById('charts').innerHTML = `
+    <div class="card"><h3>Sentiment Distribution (AI)</h3>
+      <div class="donut" style="background:${bg}"></div>
+      <div class="legend"><i style="background:#16a34a"></i>Positive ${cnt.Positive}
+      <i style="background:#dc2626"></i>Negative ${cnt.Negative}
+      <i style="background:#6b7280"></i>Neutral ${cnt.Neutral}</div></div>
+    <div class="card"><h3 style="margin-bottom:6px">Rating Distribution</h3>${rows}</div>`;
+  const rv = await (await fetch('/api/admin/reviews', {headers: H()})).json();
+  document.getElementById('rows').innerHTML = rv.map(r => `
+    <tr><td>${esc(r.product)}</td><td>${esc(r.customer)}</td><td>${r.rating} ★</td>
+    <td>${esc(r.comment)}</td><td><span class="badge ${r.sentiment}">${r.sentiment}</span></td>
+    <td><button onclick="del(${r.id})">Delete</button></td></tr>`).join('');
+}
+
+async function del(id) {
+  if (!confirm('Delete this review?')) return;
+  await fetch('/api/admin/reviews/' + id, {method: 'DELETE', headers: H()});
+  load();
+}
+
+async function addProduct() {
+  const name = document.getElementById('pname').value;
+  if (!name) return;
+  await fetch('/api/admin/products', {method: 'POST', headers: H(),
+    body: JSON.stringify({name, description: document.getElementById('pdesc').value})});
+  document.getElementById('pname').value = ''; document.getElementById('pdesc').value = '';
+  alert('Product added');
+}
+</script>
+</body>
+</html>
